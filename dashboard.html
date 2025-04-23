@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Intervue</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/dashboard.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+</head>
+<body>
+    <header class="dashboard-header">
+        <div class="container">
+            <div class="logo">
+                <a href="dashboard.html">Intervue</a>
+            </div>
+            <nav>
+                <ul class="nav-links">
+                    <li><a href="dashboard.html" class="active">Dashboard</a></li>
+                    <li><a href="#">History</a></li>
+                    <li><a href="#">Resources</a></li>
+                </ul>
+            </nav>
+            <div class="user-menu">
+                <div id="user-profile" class="user-profile">
+                    <img id="user-avatar" src="images/default-avatar.svg" alt="User Avatar">
+                    <span id="user-name">Loading...</span>
+                </div>
+                <div class="dropdown-menu" id="dropdown-menu">
+                    <ul>
+                        <li><a href="#">Profile</a></li>
+                        <li><a href="#">Settings</a></li>
+                        <li><a href="#" id="logout-btn">Logout</a></li>
+                    </ul>
+                </div>
+            </div>
+            <button class="mobile-menu-btn">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </header>
+
+    <main class="dashboard-main">
+        <div class="container">
+            <section class="welcome-section">
+                <h1>Welcome, <span id="welcome-name">User</span>!</h1>
+                <p>Ready to practice your interview skills today?</p>
+            </section>
+
+            <section class="dashboard-actions">
+                <div class="action-card">
+                    <h2>Start a New Interview</h2>
+                    <p>Create a new interview session with AI-generated questions tailored to your needs.</p>
+                    <button id="create-session-btn" class="btn btn-primary">Create Interview</button>
+                </div>
+                <div class="action-card">
+                    <h2>Join an Interview</h2>
+                    <p>Join an existing interview session with a session code.</p>
+                    <div class="join-form">
+                        <input type="text" id="session-code" placeholder="Enter session code">
+                        <button id="join-session-btn" class="btn btn-outline">Join</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="recent-sessions">
+                <h2>Recent Sessions</h2>
+                <div id="sessions-list" class="sessions-list">
+                    <p class="no-sessions">No recent sessions found.</p>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-bottom">
+                <p>&copy; 2023 Intervue. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script type="module" src="js/firebase-config.js"></script>
+    <script type="module" src="js/auth-check.js"></script>
+    <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

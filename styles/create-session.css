@@ -1,0 +1,58 @@
+.create-session-main {
+    padding: 2rem 0;
+  }
+  
+  .create-session-header {
+    margin-bottom: 2rem;
+  }
+  
+  .create-session-header h1 {
+    margin-bottom: 0.5rem;
+  }
+  
+  .create-session-header p {
+    color: var(--text-light);
+  }
+  
+  .create-session-form-container {
+    background-color: white;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 2rem;
+    margin-bottom: 2rem;
+  }
+  
+  .create-session-form {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  
+  .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+  
+  .loading-content {
+    text-align: center;
+    padding: 2rem;
+  }
+  
+  .loader {
+    display: inline-block;
+    width: 50px;
+    height: 50px;
+    border: 5px solid var(--border-color);
+    border-radius: 50%;
+    border-top-color: var(--primary-color);
+    animation: spin 1s ease-in-out infinite;
+    margin-bottom: 1.5rem;
+  }
+  
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  

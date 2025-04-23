@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interview Session - Intervue</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/interview-room.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+</head>
+<body>
+    <header class="room-header">
+        <div class="container">
+            <div class="room-info">
+                <a href="dashboard.html" class="back-btn">← Back to Dashboard</a>
+                <h1 id="session-title">Interview Session</h1>
+            </div>
+            <div class="room-actions">
+                <button id="share-btn" class="btn btn-outline">Share Session</button>
+                <button id="end-session-btn" class="btn btn-danger">End Session</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="room-main">
+        <div class="container">
+            <div class="room-layout">
+                <div class="video-section">
+                    <div class="video-container">
+                        <video id="webcam-preview" autoplay muted></video>
+                        <div class="video-controls">
+                            <button id="toggle-video-btn" class="btn btn-icon">
+                                <img src="images/video-icon.svg" alt="Toggle Video">
+                            </button>
+                            <button id="toggle-audio-btn" class="btn btn-icon">
+                                <img src="images/mic-icon.svg" alt="Toggle Audio">
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="participants-list" id="participants-list">
+                        <!-- Participants will be added here dynamically -->
+                    </div>
+                </div>
+                
+                <div class="interview-section">
+                    <div class="interview-progress">
+                        <div class="progress-bar">
+                            <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-text">
+                            Question <span id="current-question-num">1</span> of <span id="total-questions">5</span>
+                        </div>
+                    </div>
+                    
+                    <div id="question-container" class="question-container">
+                        <h2 id="question-text">Loading question...</h2>
+                        <div class="question-timer" id="question-timer">00:00</div>
+                    </div>
+                    
+                    <div class="answer-section">
+                        <div class="answer-status" id="answer-status">
+                            <div class="status-indicator recording">
+                                <span class="recording-dot"></span> Recording your answer...
+                            </div>
+                            <div class="timer">00:00</div>
+                        </div>
+                        
+                        <div class="answer-controls">
+                            <button id="start-recording-btn" class="btn btn-primary">Start Recording</button>
+                            <button id="stop-recording-btn" class="btn btn-outline" disabled>Stop Recording</button>
+                        </div>
+                        
+                        <div class="answer-preview">
+                            <h3>Your Answer (Transcribed)</h3>
+                            <div id="answer-text" class="answer-text-box" contenteditable="true" placeholder="Your transcribed answer will appear here..."></div>
+                            <div class="answer-actions">
+                                <button id="save-answer-btn" class="btn btn-primary">Save Answer</button>
+                                <button id="edit-answer-btn" class="btn btn-outline">Edit Answer</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="navigation-controls">
+                        <button id="prev-question-btn" class="btn btn-outline" disabled>Previous Question</button>
+                        <button id="next-question-btn" class="btn btn-primary">Next Question</button>
+                        <button id="finish-interview-btn" class="btn btn-success" style="display: none;">Finish Interview</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Share Session Modal -->
+    <div id="share-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>Share Session</h2>
+            <p>Share this code with others to join this interview session:</p>
+            <div class="session-code">
+                <input type="text" id="session-code-display" readonly>
+                <button id="copy-code-btn" class="btn btn-outline">Copy</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- End Session Confirmation Modal -->
+    <div id="end-session-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>End Session</h2>
+            <p>Are you sure you want to end this interview session? This action cannot be undone.</p>
+            <div class="modal-actions">
+                <button id="confirm-end-btn" class="btn btn-danger">End Session</button>
+                <button id="cancel-end-btn" class="btn btn-outline">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div id="loading-modal" class="modal">
+        <div class="modal-content loading-content">
+            <div class="loader"></div>
+            <h2>Processing Your Interview</h2>
+            <p>Please wait while we analyze your responses...</p>
+        </div>
+    </div>
+
+    <script src="js/firebase-config.js"></script>
+    <script src="js/auth-check.js"></script>
+    <script src="js/interview-room.js"></script>
+</body>
+</html>

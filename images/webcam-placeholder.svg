@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200">
+  <rect width="300" height="200" fill="#1f2937"/>
+  <path d="M150 80a30 30 0 100 60 30 30 0 000-60z" fill="#4b5563"/>
+  <path d="M110 140v10c0 5.5 4.5 10 10 10h60c5.5 0 10-4.5 10-10v-10" fill="#4b5563"/>
+  <text x="150" y="180" font-family="Arial" font-size="12" fill="#9ca3af" text-anchor="middle">Camera disabled</text>
+</svg>
