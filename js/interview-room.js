@@ -4,12 +4,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const auth = firebase.auth()
   const db = firebase.firestore()
 
-  // Get session ID from URL
+  // Get session code from URL
   const urlParams = new URLSearchParams(window.location.search)
-  const sessionId = urlParams.get("id")
+  const sessionCode = urlParams.get("code")
 
-  if (!sessionId) {
-    alert("No session ID provided")
+  if (!sessionCode) {
+    alert("No session code provided")
     window.location.href = "dashboard.html"
     return
   }
@@ -43,9 +43,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const loadingModal = document.getElementById("loading-modal")
 
   // Load session data
-  loadSessionData(sessionId)
+  loadSessionData()
 
-  // Initialize webcam
+  // Initialize webcam and microphone
   initializeWebcam()
 
   // Event listeners
@@ -68,11 +68,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   if (prevQuestionBtn) {
-    prevQuestionBtn.addEventListener("click", goToPreviousQuestion)
+    prevQuestionBtn.addEventListener("click", () => goToQuestion(currentQuestionIndex - 1))
   }
 
   if (nextQuestionBtn) {
-    nextQuestionBtn.addEventListener("click", goToNextQuestion)
+    nextQuestionBtn.addEventListener("click", () => goToQuestion(currentQuestionIndex + 1))
   }
 
   if (finishInterviewBtn) {
@@ -151,7 +151,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const confirmEndBtn = document.getElementById("confirm-end-btn")
     if (confirmEndBtn) {
       confirmEndBtn.addEventListener("click", () => {
-        endSession(sessionId)
+        endSession(sessionCode)
       })
     }
   }
@@ -168,56 +168,74 @@ document.addEventListener("DOMContentLoaded", () => {
     toggleAudioBtn.addEventListener("click", toggleAudio)
   }
 
-  // Load session data
-  async function loadSessionData(sessionId) {
-    try {
-      const doc = await db.collection("sessions").doc(sessionId).get()
+  // Theme Toggle Functionality
+  function initializeThemeToggle() {
+    const themeToggle = document.getElementById('theme-toggle');
+    const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    // Check for saved theme preference or use system preference
+    const savedTheme = localStorage.getItem('theme');
+    const currentTheme = savedTheme || (prefersDarkScheme.matches ? 'dark' : 'light');
+    
+    // Set initial theme
+    document.documentElement.setAttribute('data-theme', currentTheme);
+    
+    // Add click event listener
+    themeToggle.addEventListener('click', () => {
+        const newTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+    });
+    
+    // Listen for system theme changes
+    prefersDarkScheme.addEventListener('change', (e) => {
+        if (!localStorage.getItem('theme')) {
+            const newTheme = e.matches ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', newTheme);
+        }
+    });
+  }
 
-      if (!doc.exists) {
+  // Load session data
+  async function loadSessionData() {
+    try {
+      // Get sessions from sessionStorage
+      const sessions = JSON.parse(sessionStorage.getItem('sessions') || '[]')
+      const session = sessions.find(s => s.code === sessionCode)
+
+      if (!session) {
         alert("Session not found")
         window.location.href = "dashboard.html"
         return
       }
 
-      sessionData = doc.data()
+      sessionData = session
 
       // Update session title
       if (sessionTitle) {
-        sessionTitle.textContent = sessionData.title
-      }
-
-      // Load participants
-      loadParticipants(sessionData.participants)
-
-      // Check if user is authorized to access this session
-      const user = auth.currentUser
-      const isParticipant = sessionData.participants.some((p) => p.uid === user.uid)
-
-      if (!isParticipant) {
-        alert("You are not authorized to access this session")
-        window.location.href = "dashboard.html"
-        return
+        sessionTitle.textContent = session.title || "Interview Session"
       }
 
       // Initialize questions
-      if (sessionData.questions && sessionData.questions.length > 0) {
+      if (session.questions && session.questions.length > 0) {
         // Initialize user answers array
-        userAnswers = new Array(sessionData.questions.length).fill(null)
+        userAnswers = new Array(session.questions.length).fill(null)
 
         // Update total questions
         if (totalQuestions) {
-          totalQuestions.textContent = sessionData.questions.length
+          totalQuestions.textContent = session.questions.length
         }
 
         // Display first question
         displayQuestion(0)
       } else {
+        console.error("No questions found in session:", session)
         alert("No questions found for this interview")
         window.location.href = "dashboard.html"
       }
 
       // Listen for session updates
-      listenForSessionUpdates(sessionId)
+      listenForSessionUpdates(sessionCode)
     } catch (error) {
       console.error("Error loading session:", error)
       alert("Error loading session. Please try again.")
@@ -225,33 +243,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Load participants
-  function loadParticipants(participants) {
-    const participantsList = document.getElementById("participants-list")
-
-    if (!participantsList) return
-
-    let participantsHTML = ""
-
-    participants.forEach((participant) => {
-      participantsHTML += `
-                <div class="participant">
-                    <img src="images/default-avatar.svg" alt="${participant.name}">
-                    <div class="participant-info">
-                        <div class="participant-name">${participant.name}</div>
-                        <div class="participant-role">${participant.role}</div>
-                    </div>
-                </div>
-            `
-    })
-
-    participantsList.innerHTML = participantsHTML
-  }
-
   // Listen for session updates
-  function listenForSessionUpdates(sessionId) {
+  function listenForSessionUpdates(sessionCode) {
     db.collection("sessions")
-      .doc(sessionId)
+      .doc(sessionCode)
       .onSnapshot(
         (doc) => {
           if (!doc.exists) {
@@ -265,8 +260,8 @@ document.addEventListener("DOMContentLoaded", () => {
           // Update session data
           sessionData = updatedData
 
-          // Update participants
-          loadParticipants(updatedData.participants)
+          // Display question
+          displayQuestion(currentQuestionIndex)
 
           // Check if session has ended
           if (updatedData.status === "ended") {
@@ -283,15 +278,33 @@ document.addEventListener("DOMContentLoaded", () => {
   // Display question
   function displayQuestion(index) {
     if (!sessionData || !sessionData.questions || index >= sessionData.questions.length) {
+      console.error("Invalid question index or no questions available")
       return
     }
 
     currentQuestionIndex = index
     const question = sessionData.questions[index]
 
-    // Update question text
+    // Update question text with proper formatting
     if (questionText) {
-      questionText.textContent = question.question
+      questionText.innerHTML = `
+        <div class="question-content">
+          <h3>Question ${index + 1}</h3>
+          <p class="question-text">${question.question}</p>
+          <div class="question-details">
+            <div class="expected-answer">
+              <h4>Expected Answer:</h4>
+              <p>${question.expectedAnswer || 'No expected answer provided'}</p>
+            </div>
+            <div class="evaluation-criteria">
+              <h4>Evaluation Criteria:</h4>
+              <ul>
+                ${(question.evaluationCriteria || []).map(criteria => `<li>${criteria}</li>`).join('')}
+              </ul>
+            </div>
+          </div>
+        </div>
+      `
     }
 
     // Update progress
@@ -325,137 +338,196 @@ document.addEventListener("DOMContentLoaded", () => {
     resetRecordingState()
   }
 
-  // Initialize webcam
-  function initializeWebcam() {
-    const webcamPreview = document.getElementById("webcam-preview")
+  // Initialize webcam and microphone
+  async function initializeWebcam() {
+    const videoElement = document.getElementById('webcam-preview')
+    const toggleVideoBtn = document.getElementById('toggle-video-btn')
+    const toggleAudioBtn = document.getElementById('toggle-audio-btn')
+    const mediaError = document.querySelector('.media-error')
 
-    if (!webcamPreview) return
-
-    // Request access to webcam
-    navigator.mediaDevices
-      .getUserMedia({ video: true, audio: true })
-      .then((stream) => {
-        webcamPreview.srcObject = stream
-        window.localStream = stream // Store stream for later use
-      })
-      .catch((error) => {
-        console.error("Error accessing webcam:", error)
-        // Show placeholder instead
-        webcamPreview.poster = "images/webcam-placeholder.svg"
-      })
-  }
-
-  // Toggle video
-  function toggleVideo() {
-    const webcamPreview = document.getElementById("webcam-preview")
-    const toggleVideoBtn = document.getElementById("toggle-video-btn")
-
-    if (!webcamPreview || !toggleVideoBtn || !window.localStream) return
-
-    const videoTracks = window.localStream.getVideoTracks()
-
-    if (videoTracks.length === 0) return
-
-    const isEnabled = videoTracks[0].enabled
-
-    // Toggle video track
-    videoTracks[0].enabled = !isEnabled
-
-    // Update button icon
-    toggleVideoBtn.innerHTML = videoTracks[0].enabled
-      ? '<img src="images/video-icon.svg" alt="Toggle Video">'
-      : '<img src="images/video-off-icon.svg" alt="Toggle Video">'
-  }
-
-  // Toggle audio
-  function toggleAudio() {
-    const toggleAudioBtn = document.getElementById("toggle-audio-btn")
-
-    if (!toggleAudioBtn || !window.localStream) return
-
-    const audioTracks = window.localStream.getAudioTracks()
-
-    if (audioTracks.length === 0) return
-
-    const isEnabled = audioTracks[0].enabled
-
-    // Toggle audio track
-    audioTracks[0].enabled = !isEnabled
-
-    // Update button icon
-    toggleAudioBtn.innerHTML = audioTracks[0].enabled
-      ? '<img src="images/mic-icon.svg" alt="Toggle Audio">'
-      : '<img src="images/mic-off-icon.svg" alt="Toggle Audio">'
-  }
-
-  // Start recording
-  function startRecording() {
-    if (isRecording) return
-
-    // Check if browser supports MediaRecorder
-    if (!window.MediaRecorder) {
-      alert("Your browser doesn't support audio recording. Please use Chrome, Firefox, or Edge.")
-      return
+    if (mediaError) {
+      mediaError.remove()
     }
 
-    // Get audio stream
-    navigator.mediaDevices
-      .getUserMedia({ audio: true })
-      .then((stream) => {
-        isRecording = true
-        audioChunks = []
+    try {
+      // Request both audio and video permissions
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user'
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100
+        }
+      })
 
-        // Create media recorder
-        mediaRecorder = new MediaRecorder(stream)
+      // Store stream globally
+      window.mediaStream = stream
 
-        // Handle data available event
-        mediaRecorder.ondataavailable = (event) => {
+      // Set up video element
+      if (videoElement) {
+        videoElement.srcObject = stream
+        await videoElement.play()
+        console.log('Video stream started successfully')
+      }
+
+      // Enable and set initial state of control buttons
+      if (toggleVideoBtn) {
+        toggleVideoBtn.disabled = false
+        toggleVideoBtn.classList.add('active')
+      }
+      if (toggleAudioBtn) {
+        toggleAudioBtn.disabled = false
+        toggleAudioBtn.classList.add('active')
+      }
+
+      // Set initial button states
+      updateMediaButtonStates()
+
+      // Set up audio recording capability
+      setupAudioRecording(stream)
+
+    } catch (error) {
+      console.error('Error accessing media devices:', error)
+      showMediaError()
+    }
+  }
+
+  function showMediaError() {
+    const webcamContainer = document.querySelector('.webcam-container')
+    if (!webcamContainer) return
+
+    const mediaError = document.createElement('div')
+    mediaError.className = 'media-error'
+    mediaError.innerHTML = `
+      <h3>Camera and Microphone Access Required</h3>
+      <p>Please follow these steps to enable access:</p>
+      <ol>
+        <li>Click the camera/microphone icon in your browser's address bar</li>
+        <li>Select "Allow" for both camera and microphone</li>
+        <li>Click the button below to try again</li>
+      </ol>
+      <button onclick="window.initializeWebcam()" class="btn btn-primary">Try Again</button>
+    `
+    
+    webcamContainer.appendChild(mediaError)
+  }
+
+  function updateMediaButtonStates() {
+    const stream = window.mediaStream
+    if (!stream) return
+
+    const videoTrack = stream.getVideoTracks()[0]
+    const audioTrack = stream.getAudioTracks()[0]
+    
+    const toggleVideoBtn = document.getElementById('toggle-video-btn')
+    const toggleAudioBtn = document.getElementById('toggle-audio-btn')
+    
+    if (toggleVideoBtn && videoTrack) {
+      toggleVideoBtn.classList.toggle('active', videoTrack.enabled)
+      // Update button title
+      toggleVideoBtn.title = videoTrack.enabled ? 'Disable Video' : 'Enable Video'
+    }
+    
+    if (toggleAudioBtn && audioTrack) {
+      toggleAudioBtn.classList.toggle('active', audioTrack.enabled)
+      // Update button title
+      toggleAudioBtn.title = audioTrack.enabled ? 'Disable Microphone' : 'Enable Microphone'
+    }
+  }
+
+  function toggleVideo() {
+    const stream = window.mediaStream
+    if (!stream) return
+
+    const videoTrack = stream.getVideoTracks()[0]
+    if (videoTrack) {
+      videoTrack.enabled = !videoTrack.enabled
+      
+      // Update video preview visibility
+      const videoElement = document.getElementById('webcam-preview')
+      if (videoElement) {
+        videoElement.style.opacity = videoTrack.enabled ? '1' : '0.5'
+      }
+      
+      updateMediaButtonStates()
+    }
+  }
+
+  function toggleAudio() {
+    const stream = window.mediaStream
+    if (!stream) return
+
+    const audioTrack = stream.getAudioTracks()[0]
+    if (audioTrack) {
+      audioTrack.enabled = !audioTrack.enabled
+      updateMediaButtonStates()
+      
+      // If recording is in progress, update recording state
+      if (isRecording && !audioTrack.enabled) {
+        stopRecording()
+      }
+    }
+  }
+
+  function setupAudioRecording(stream) {
+    // Set up MediaRecorder for audio recording
+    const audioStream = new MediaStream(stream.getAudioTracks())
+    window.mediaRecorder = new MediaRecorder(audioStream, {
+      mimeType: 'audio/webm;codecs=opus'
+    })
+
+    window.mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0) {
             audioChunks.push(event.data)
           }
         }
 
-        // Handle recording stop
-        mediaRecorder.onstop = () => {
-          // Convert audio chunks to blob
-          const audioBlob = new Blob(audioChunks, { type: "audio/webm" })
-
-          // Transcribe audio (in a real app, this would call a speech-to-text API)
-          transcribeAudio(audioBlob)
-
-          // Release microphone
-          stream.getTracks().forEach((track) => track.stop())
+    window.mediaRecorder.onstop = async () => {
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
+      await transcribeAudio(audioBlob)
+    }
         }
 
         // Start recording
-        mediaRecorder.start()
+  function startRecording() {
+    if (isRecording || !window.mediaRecorder) return
+
+    try {
+      audioChunks = []
+      window.mediaRecorder.start()
+      isRecording = true
         recordingStartTime = Date.now()
 
         // Update UI
         updateRecordingUI(true)
-
-        // Start timer
         startTimer()
-      })
-      .catch((error) => {
-        console.error("Error accessing microphone:", error)
-        alert("Error accessing microphone. Please check your permissions.")
-      })
+
+    } catch (error) {
+      console.error('Error starting recording:', error)
+      alert('Failed to start recording. Please check your microphone permissions.')
+    }
   }
 
   // Stop recording
   function stopRecording() {
-    if (!isRecording || !mediaRecorder) return
+    if (!isRecording || !window.mediaRecorder) return
 
-    // Stop media recorder
-    mediaRecorder.stop()
+    try {
+      window.mediaRecorder.stop()
     isRecording = false
 
     // Update UI
     updateRecordingUI(false)
-
-    // Stop timer
     stopTimer()
+
+    } catch (error) {
+      console.error('Error stopping recording:', error)
+      alert('Failed to stop recording. Please refresh the page and try again.')
+    }
   }
 
   // Update recording UI
@@ -587,29 +659,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 2000)
   }
 
-  // Go to previous question
-  function goToPreviousQuestion() {
-    if (currentQuestionIndex > 0) {
-      // Save current answer
+  // Navigation functions
+  function goToQuestion(index) {
+    if (index >= 0 && index < sessionData.questions.length) {
+      // Save current answer before moving
+      const answerText = document.getElementById("answer-text")
       if (answerText) {
         userAnswers[currentQuestionIndex] = answerText.textContent
       }
-
-      // Display previous question
-      displayQuestion(currentQuestionIndex - 1)
-    }
-  }
-
-  // Go to next question
-  function goToNextQuestion() {
-    if (currentQuestionIndex < sessionData.questions.length - 1) {
-      // Save current answer
-      if (answerText) {
-        userAnswers[currentQuestionIndex] = answerText.textContent
-      }
-
-      // Display next question
-      displayQuestion(currentQuestionIndex + 1)
+      displayQuestion(index)
     }
   }
 
@@ -628,10 +686,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const feedback = await generateFeedback(sessionData.questions, userAnswers)
 
       // Save interview results to Firestore
-      await saveInterviewResults(sessionId, userAnswers, feedback)
+      await saveInterviewResults(sessionCode, userAnswers, feedback)
 
       // Redirect to feedback page
-      window.location.href = `feedback.html?id=${sessionId}`
+      window.location.href = `feedback.html?id=${sessionCode}`
     } catch (error) {
       console.error("Error finishing interview:", error)
       alert("Error processing interview results. Please try again.")
@@ -720,13 +778,13 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Save interview results to Firestore
-  async function saveInterviewResults(sessionId, answers, feedback) {
+  async function saveInterviewResults(sessionCode, answers, feedback) {
     const user = auth.currentUser
 
     // Save results to Firestore
     await db
       .collection("sessions")
-      .doc(sessionId)
+      .doc(sessionCode)
       .collection("results")
       .doc(user.uid)
       .set({
@@ -738,16 +796,16 @@ document.addEventListener("DOMContentLoaded", () => {
       })
 
     // Update session status
-    await db.collection("sessions").doc(sessionId).update({
+    await db.collection("sessions").doc(sessionCode).update({
       status: "completed",
       completedAt: new Date(),
     })
   }
 
   // End session
-  function endSession(sessionId) {
+  function endSession(sessionCode) {
     db.collection("sessions")
-      .doc(sessionId)
+      .doc(sessionCode)
       .update({
         status: "ended",
         endedAt: new Date(),
@@ -761,4 +819,14 @@ document.addEventListener("DOMContentLoaded", () => {
         alert("Error ending session. Please try again.")
       })
   }
+
+  // Make functions available globally
+  window.initializeWebcam = initializeWebcam
+  window.toggleVideo = toggleVideo
+  window.toggleAudio = toggleAudio
+  window.startRecording = startRecording
+  window.stopRecording = stopRecording
+
+  // Initialize theme toggle when DOM is loaded
+  initializeThemeToggle()
 })

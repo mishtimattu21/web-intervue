@@ -161,11 +161,11 @@ function loadRecentSessions() {
         <div class="session-card" data-session-code="${session.code}">
           <div class="session-header">
             <div class="session-title">
-              <h3>${session.title}</h3>
+              <h3>${session.title || 'Untitled Session'}</h3>
               <span class="session-code">Code: ${session.code}</span>
             </div>
             <div class="session-meta">
-              <span class="session-type">${session.interviewType}</span>
+              <span class="session-type">${session.interviewType || 'General'}</span>
               <span class="session-date">${date}</span>
               <span class="session-status ${session.status}">${session.status}</span>
             </div>
@@ -174,11 +174,11 @@ function loadRecentSessions() {
           <div class="session-details">
             <div class="detail-item">
               <span class="label">Role:</span>
-              <span class="value">${session.jobRole}</span>
+              <span class="value">${session.jobRole || 'Not specified'}</span>
             </div>
             <div class="detail-item">
               <span class="label">Experience:</span>
-              <span class="value">${session.experienceLevel}</span>
+              <span class="value">${session.experienceLevel || 'Not specified'}</span>
             </div>
             ${session.specificSkills ? `
               <div class="detail-item">
@@ -188,40 +188,38 @@ function loadRecentSessions() {
             ` : ''}
           </div>
 
-          <div class="questions-section">
-            <button class="accordion-btn" onclick="toggleQuestions(this)">
-              <span>View Questions</span>
-              <span class="accordion-icon">▼</span>
-            </button>
-            <div class="questions-content">
-              ${session.questions.map((q, index) => `
-                <div class="question-item">
-                  <div class="question-header">
-                    <h4>Question ${index + 1}</h4>
-                    ${hasStarted ? `<span class="question-status ${index < session.currentQuestionIndex ? 'completed' : 'pending'}">
-                      ${index < session.currentQuestionIndex ? 'Completed' : 'Pending'}
-                    </span>` : ''}
+          ${isCompleted ? `
+            <div class="feedback-section">
+              <div class="feedback-header">
+                <h4>Interview Results</h4>
+                <div class="score-badge">${session.feedback ? session.feedback.overall.score : 'N/A'}/10</div>
+              </div>
+              ${session.feedback ? `
+                <div class="feedback-summary">
+                  <p>${session.feedback.overall.summary}</p>
+                </div>
+                <div class="feedback-details">
+                  <div class="strengths">
+                    <h5>Key Strengths</h5>
+                    <ul>
+                      ${session.feedback.overall.strengths.map(strength => `<li>${strength}</li>`).join('')}
+                    </ul>
                   </div>
-                  <p class="question-text">${q.question}</p>
-                  <div class="question-details">
-                    <div class="expected-answer">
-                      <h5>Expected Answer:</h5>
-                      <p>${q.expectedAnswer}</p>
-                    </div>
-                    <div class="evaluation-criteria">
-                      <h5>Evaluation Criteria:</h5>
-                      <p>${q.evaluationCriteria}</p>
-                    </div>
+                  <div class="improvements">
+                    <h5>Areas for Improvement</h5>
+                    <ul>
+                      ${session.feedback.overall.improvements.map(improvement => `<li>${improvement}</li>`).join('')}
+                    </ul>
                   </div>
                 </div>
-              `).join('')}
+              ` : '<p class="no-feedback">Feedback is being generated...</p>'}
             </div>
-          </div>
+          ` : ''}
 
           <div class="session-actions">
             ${
               isCompleted
-                ? `<a href="feedback.html?code=${session.code}" class="btn btn-primary">View Results</a>`
+                ? `<a href="feedback.html?code=${session.code}" class="btn btn-primary">View Detailed Feedback</a>`
                 : hasStarted
                 ? `<a href="interview-room.html?code=${session.code}" class="btn btn-outline">Continue Interview</a>`
                 : `<a href="interview-room.html?code=${session.code}" class="btn btn-primary">Start Interview</a>`
@@ -246,15 +244,10 @@ function loadRecentSessions() {
       
       // Toggle active class
       button.classList.toggle('active');
+      content.classList.toggle('active');
       
-      // Toggle content visibility
-      if (content.style.maxHeight) {
-        content.style.maxHeight = null;
-        icon.textContent = '▼';
-      } else {
-        content.style.maxHeight = content.scrollHeight + "px";
-        icon.textContent = '▲';
-      }
+      // Toggle icon
+      icon.textContent = content.classList.contains('active') ? '▲' : '▼';
     };
 
     // Add delete function to window object
@@ -299,4 +292,5 @@ auth.onAuthStateChanged((user) => {
     loadRecentSessions();
   }
 });
+
 
