@@ -1,11 +1,9 @@
-import { auth, db } from "./firebase-config.js";
-import { 
-  collection, 
-  addDoc, 
-  serverTimestamp 
-} from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { auth } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 import { authInitialized } from "./auth-check.js";
+
+const GEMINI_API_KEY = "AIzaSyDvpOmdzcaLw1NIRtsNu1blC60-MLAUDO8";
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
 
 document.addEventListener("DOMContentLoaded", async () => {
     // Wait for auth to be initialized
@@ -92,16 +90,18 @@ document.addEventListener("DOMContentLoaded", async () => {
             throw new Error("No user logged in")
           }
   
-          // Generate interview questions using mock data
-          const questions = getMockQuestions(interviewType, jobRole);
-          console.log("Questions generated successfully:", questions);
+          // Generate interview questions using Gemini API
+          let questions;
+          try {
+            questions = await generateInterviewQuestions(jobRole, experienceLevel, interviewType, specificSkills, additionalInfo);
+            console.log("Questions generated successfully:", questions);
+          } catch (error) {
+            console.error("Error generating questions with Gemini API:", error);
+            questions = getMockQuestions(interviewType, jobRole);
+            console.log("Falling back to mock questions:", questions);
+          }
   
-          // Store questions in sessionStorage
-          sessionStorage.setItem('currentSessionQuestions', JSON.stringify(questions));
-          
-          // Create session
-          console.log("Creating session in Firestore...");
-          
+          // Create session data
           const sessionData = {
             title: sessionTitle,
             jobRole: jobRole,
@@ -111,7 +111,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             additionalInfo: additionalInfo,
             code: sessionCode,
             createdBy: user.uid,
-            createdAt: serverTimestamp(),
+            createdAt: new Date().toISOString(),
             participants: [
               {
                 uid: user.uid,
@@ -121,38 +121,24 @@ document.addEventListener("DOMContentLoaded", async () => {
             ],
             status: "active",
             currentQuestionIndex: 0,
-            answers: []
+            answers: [],
+            questions: questions
           };
-
-          console.log("Session data:", sessionData);
-          
-          try {
-            // Create the session document in Firestore
-            const sessionsRef = collection(db, "sessions");
-            const sessionRef = await addDoc(sessionsRef, sessionData);
-            
-            if (!sessionRef || !sessionRef.id) {
-              throw new Error("Failed to create session document");
-            }
-            
-            console.log("Session created successfully with ID:", sessionRef.id);
-            
-            // Store session ID in sessionStorage for quick access
-            sessionStorage.setItem('currentSessionId', sessionRef.id);
-            
-            // Keep the loading modal visible for a moment before redirecting
-            setTimeout(() => {
-              window.location.href = "dashboard.html";
-            }, 1000);
-          } catch (error) {
-            console.error("Error creating session:", error);
-            alert("Error creating session. Please try again. " + error.message);
-            if (loadingModal) {
-              loadingModal.classList.remove("active");
-            }
-          }
+  
+          // Store session data in sessionStorage
+          const sessions = JSON.parse(sessionStorage.getItem('sessions') || '[]');
+          sessions.push(sessionData);
+          sessionStorage.setItem('sessions', JSON.stringify(sessions));
+          sessionStorage.setItem('currentSessionId', sessionCode);
+  
+          console.log("Session created successfully with code:", sessionCode);
+  
+          // Keep the loading modal visible for a moment before redirecting
+          setTimeout(() => {
+            window.location.href = "dashboard.html";
+          }, 1000);
         } catch (error) {
-          console.error("Error in form submission:", error);
+          console.error("Error creating session:", error);
           alert("Error creating session. Please try again. " + error.message);
           if (loadingModal) {
             loadingModal.classList.remove("active");
@@ -162,27 +148,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   })
   
-  // Generate a random session code (6 characters)
-  function generateSessionCode() {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    let code = ""
-  
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-  
-    return code
-  }
-  
   // Generate interview questions using Gemini API
   async function generateInterviewQuestions(jobRole, experienceLevel, interviewType, specificSkills, additionalInfo) {
-    // For testing, return mock questions immediately
-    return getMockQuestions(interviewType, jobRole);
-    
-    /*
-    const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"; // Replace with your actual API key
-    const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
-
     const prompt = `
       Generate 5 interview questions for a ${experienceLevel} ${jobRole} position.
       Interview type: ${interviewType}
@@ -194,9 +161,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       2. An expected answer that demonstrates proficiency
       3. Specific evaluation criteria for the interviewer
       
-      Format the response as a JSON array of objects.
+      Format the response as a JSON array of objects with the following structure:
+      [
+        {
+          "question": "The interview question",
+          "expectedAnswer": "What a good answer should include",
+          "evaluationCriteria": "What the interviewer should look for"
+        }
+      ]
     `;
-
+  
     try {
       const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
         method: "POST",
@@ -211,29 +185,56 @@ document.addEventListener("DOMContentLoaded", async () => {
           }]
         })
       });
-
+  
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-
+  
       const data = await response.json();
       const generatedText = data.candidates[0].content.parts[0].text;
       
       try {
+        // Try to parse the response as JSON
         const questions = JSON.parse(generatedText);
         return questions;
       } catch (e) {
         console.error("Error parsing Gemini response:", e);
-        return getMockQuestions(interviewType, jobRole);
+        // Extract questions using regex if JSON parsing fails
+        const questionRegex = /"question":\s*"([^"]+)"/g;
+        const answerRegex = /"expectedAnswer":\s*"([^"]+)"/g;
+        const criteriaRegex = /"evaluationCriteria":\s*"([^"]+)"/g;
+        
+        const questions = [];
+        let match;
+        while ((match = questionRegex.exec(generatedText)) !== null) {
+          questions.push({
+            question: match[1],
+            expectedAnswer: (answerRegex.exec(generatedText) || [])[1] || "Not provided",
+            evaluationCriteria: (criteriaRegex.exec(generatedText) || [])[1] || "Not provided"
+          });
+        }
+        
+        return questions.length > 0 ? questions : getMockQuestions(interviewType, jobRole);
       }
     } catch (error) {
       console.error("Error calling Gemini API:", error);
       return getMockQuestions(interviewType, jobRole);
     }
-    */
   }
   
-  // Fallback mock questions
+  // Generate a random session code (6 characters)
+  function generateSessionCode() {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    let code = ""
+  
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+  
+    return code
+  }
+  
+  // Mock questions generator
   function getMockQuestions(interviewType, jobRole) {
     if (interviewType === "technical") {
       return [

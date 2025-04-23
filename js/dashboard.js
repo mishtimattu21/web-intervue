@@ -1,5 +1,5 @@
-import { auth, db } from "./firebase-config.js";
-import { collection, query, where, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { auth } from "./firebase-config.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 
 document.addEventListener("DOMContentLoaded", () => {
   // User profile dropdown
@@ -49,51 +49,36 @@ document.addEventListener("DOMContentLoaded", () => {
         return
       }
 
-      // Find session with the given code
-      const sessionsRef = collection(db, "sessions");
-      const q = query(sessionsRef, where("code", "==", sessionCode), where("status", "==", "active"));
-      
-      getDocs(q)
-        .then((querySnapshot) => {
-          if (querySnapshot.empty) {
-            alert("No active session found with this code");
-            return;
-          }
+      // Get sessions from sessionStorage
+      const sessions = JSON.parse(sessionStorage.getItem('sessions') || '[]');
+      const session = sessions.find(s => s.code === sessionCode && s.status === 'active');
 
-          // Get the first matching session
-          const sessionDoc = querySnapshot.docs[0];
-          const sessionId = sessionDoc.id;
-          const sessionData = sessionDoc.data();
+      if (!session) {
+        alert("No active session found with this code");
+        return;
+      }
 
-          // Check if user is already a participant
-          const user = auth.currentUser;
-          const isParticipant = sessionData.participants.some((p) => p.uid === user.uid);
+      // Check if user is already a participant
+      const user = auth.currentUser;
+      const isParticipant = session.participants.some((p) => p.uid === user.uid);
 
-          if (!isParticipant) {
-            // Add user to participants
-            return db
-              .collection("sessions")
-              .doc(sessionId)
-              .update({
-                participants: arrayUnion({
-                  uid: user.uid,
-                  name: user.displayName || "Anonymous",
-                  role: "participant",
-                }),
-              })
-              .then(() => {
-                // Redirect to interview room
-                window.location.href = `interview-room.html?id=${sessionId}`;
-              });
-          } else {
-            // User is already a participant, just redirect
-            window.location.href = `interview-room.html?id=${sessionId}`;
-          }
-        })
-        .catch((error) => {
-          console.error("Error joining session:", error);
-          alert("Error joining session. Please try again.");
+      if (!isParticipant) {
+        // Add user to participants
+        session.participants.push({
+          uid: user.uid,
+          name: user.displayName || "Anonymous",
+          role: "participant",
         });
+
+        // Update sessions in sessionStorage
+        sessionStorage.setItem('sessions', JSON.stringify(sessions));
+      }
+
+      // Store current session code
+      sessionStorage.setItem('currentSessionId', sessionCode);
+
+      // Redirect to interview room
+      window.location.href = `interview-room.html?code=${sessionCode}`;
     });
   }
 
@@ -130,66 +115,188 @@ function loadUserInfo() {
 }
 
 // Load recent sessions
-async function loadRecentSessions() {
-  const sessionsList = document.getElementById("sessions-list")
+function loadRecentSessions() {
+  const sessionsList = document.getElementById("sessions-list");
+  console.log("Loading recent sessions...");
 
-  if (!sessionsList) return
+  if (!sessionsList) {
+    console.error("Sessions list element not found");
+    return;
+  }
 
-  const user = auth.currentUser
-  if (!user) return
+  const user = auth.currentUser;
+  if (!user) {
+    console.error("No user logged in");
+    return;
+  }
 
   try {
-    // Query sessions where user is a participant
-    const sessionsRef = collection(db, "sessions");
-    const q = query(
-      sessionsRef,
-      where("participants", "array-contains", { uid: user.uid }),
-      orderBy("createdAt", "desc"),
-      limit(5)
-    );
+    // Get sessions from sessionStorage
+    const sessionsStr = sessionStorage.getItem('sessions');
+    console.log("Sessions from storage:", sessionsStr);
+    
+    const sessions = JSON.parse(sessionsStr || '[]');
+    console.log("Parsed sessions:", sessions);
+    
+    // Filter sessions where user is a participant and sort by creation date
+    const userSessions = sessions
+      .filter(session => session.participants.some(p => p.uid === user.uid))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    const querySnapshot = await getDocs(q);
+    console.log("User sessions:", userSessions);
 
-    if (querySnapshot.empty) {
-      sessionsList.innerHTML = '<p class="no-sessions">No recent sessions found.</p>';
+    if (userSessions.length === 0) {
+      sessionsList.innerHTML = '<div class="no-sessions"><p>No recent sessions found.</p></div>';
       return;
     }
 
     let sessionsHTML = '';
 
-    querySnapshot.forEach((doc) => {
-      const session = doc.data();
-      const date = session.createdAt ? new Date(session.createdAt.toDate()).toLocaleDateString() : "Date not available";
+    userSessions.forEach((session) => {
+      const date = new Date(session.createdAt).toLocaleDateString();
       const hasStarted = session.currentQuestionIndex > 0;
       const isCompleted = session.status === "completed";
 
       sessionsHTML += `
-        <div class="session-card">
-          <div class="session-info">
-            <h3>${session.title}</h3>
+        <div class="session-card" data-session-code="${session.code}">
+          <div class="session-header">
+            <div class="session-title">
+              <h3>${session.title}</h3>
+              <span class="session-code">Code: ${session.code}</span>
+            </div>
             <div class="session-meta">
-              <span class="session-type">${session.interviewType || "Interview"}</span>
+              <span class="session-type">${session.interviewType}</span>
               <span class="session-date">${date}</span>
               <span class="session-status ${session.status}">${session.status}</span>
             </div>
-            <p class="session-role">${session.jobRole} (${session.experienceLevel})</p>
           </div>
+          
+          <div class="session-details">
+            <div class="detail-item">
+              <span class="label">Role:</span>
+              <span class="value">${session.jobRole}</span>
+            </div>
+            <div class="detail-item">
+              <span class="label">Experience:</span>
+              <span class="value">${session.experienceLevel}</span>
+            </div>
+            ${session.specificSkills ? `
+              <div class="detail-item">
+                <span class="label">Skills:</span>
+                <span class="value">${session.specificSkills}</span>
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="questions-section">
+            <button class="accordion-btn" onclick="toggleQuestions(this)">
+              <span>View Questions</span>
+              <span class="accordion-icon">▼</span>
+            </button>
+            <div class="questions-content">
+              ${session.questions.map((q, index) => `
+                <div class="question-item">
+                  <div class="question-header">
+                    <h4>Question ${index + 1}</h4>
+                    ${hasStarted ? `<span class="question-status ${index < session.currentQuestionIndex ? 'completed' : 'pending'}">
+                      ${index < session.currentQuestionIndex ? 'Completed' : 'Pending'}
+                    </span>` : ''}
+                  </div>
+                  <p class="question-text">${q.question}</p>
+                  <div class="question-details">
+                    <div class="expected-answer">
+                      <h5>Expected Answer:</h5>
+                      <p>${q.expectedAnswer}</p>
+                    </div>
+                    <div class="evaluation-criteria">
+                      <h5>Evaluation Criteria:</h5>
+                      <p>${q.evaluationCriteria}</p>
+                    </div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
           <div class="session-actions">
             ${
               isCompleted
-                ? `<a href="feedback.html?id=${doc.id}" class="btn btn-primary btn-sm">View Results</a>`
+                ? `<a href="feedback.html?code=${session.code}" class="btn btn-primary">View Results</a>`
                 : hasStarted
-                ? `<a href="interview-room.html?id=${doc.id}" class="btn btn-outline btn-sm">Continue Interview</a>`
-                : `<a href="interview-room.html?id=${doc.id}" class="btn btn-primary btn-sm">Start Interview</a>`
+                ? `<a href="interview-room.html?code=${session.code}" class="btn btn-outline">Continue Interview</a>`
+                : `<a href="interview-room.html?code=${session.code}" class="btn btn-primary">Start Interview</a>`
             }
+            <button class="btn btn-delete" onclick="deleteSession('${session.code}')">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2 4h12M5.333 4V2.667c0-.737.597-1.334 1.334-1.334h2.666c.737 0 1.334.597 1.334 1.334V4m2 0v9.333c0 .737-.597 1.334-1.334 1.334H4.667c-.737 0-1.334-.597-1.334-1.334V4h9.334z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Delete
+            </button>
           </div>
         </div>
       `;
     });
 
     sessionsList.innerHTML = sessionsHTML;
+
+    // Add the toggle function to window object
+    window.toggleQuestions = function(button) {
+      const content = button.nextElementSibling;
+      const icon = button.querySelector('.accordion-icon');
+      
+      // Toggle active class
+      button.classList.toggle('active');
+      
+      // Toggle content visibility
+      if (content.style.maxHeight) {
+        content.style.maxHeight = null;
+        icon.textContent = '▼';
+      } else {
+        content.style.maxHeight = content.scrollHeight + "px";
+        icon.textContent = '▲';
+      }
+    };
+
+    // Add delete function to window object
+    window.deleteSession = function(sessionCode) {
+      if (confirm('Are you sure you want to delete this session? This action cannot be undone.')) {
+        try {
+          // Get current sessions
+          const sessions = JSON.parse(sessionStorage.getItem('sessions') || '[]');
+          
+          // Filter out the session to delete
+          const updatedSessions = sessions.filter(session => session.code !== sessionCode);
+          
+          // Save back to sessionStorage
+          sessionStorage.setItem('sessions', JSON.stringify(updatedSessions));
+          
+          // Remove the session card from DOM
+          const sessionCard = document.querySelector(`[data-session-code="${sessionCode}"]`);
+          if (sessionCard) {
+            sessionCard.remove();
+          }
+          
+          // If no sessions left, show the no sessions message
+          if (updatedSessions.length === 0) {
+            sessionsList.innerHTML = '<div class="no-sessions"><p>No recent sessions found.</p></div>';
+          }
+        } catch (error) {
+          console.error('Error deleting session:', error);
+          alert('Failed to delete session. Please try again.');
+        }
+      }
+    };
+
   } catch (error) {
     console.error("Error loading sessions:", error);
-    sessionsList.innerHTML = '<p class="no-sessions">Error loading sessions.</p>';
+    sessionsList.innerHTML = '<div class="no-sessions"><p>Error loading sessions.</p></div>';
   }
 }
+
+// Call loadRecentSessions when auth state changes
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    loadRecentSessions();
+  }
+});
+
